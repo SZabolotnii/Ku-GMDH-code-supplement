@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"airquality_ozone","LSE",0.651,0.112,15.077,1.223,0.067,0,0,3
+"airquality_ozone","L1",0.653,0.26,14.094,-0.806,0.433,0,0,3
+"airquality_ozone","PMM",0.665,0.151,15.036,1.094,0.267,0.274,0.011,3
+"airquality_ozone","Huber",0.666,0.121,15.359,-1.448,0.167,0,0,3
+"airquality_ozone","ridge-LSE",0.685,0.133,15.651,2.335,0.067,0,0,3

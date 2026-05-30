@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"mass_cars93_mpg","LSE",0.506,0.12,1.942,-0.08,0.233,0,0,3
+"mass_cars93_mpg","Huber",0.535,0.166,2.05,-0.209,0.233,0,0,3
+"mass_cars93_mpg","ridge-LSE",0.566,0.199,2.175,0.019,0.2,0,0,3
+"mass_cars93_mpg","PMM",0.572,0.181,2.108,0.218,0.267,0.152,0.013,3
+"mass_cars93_mpg","L1",0.685,0.428,2.286,-0.149,0.067,0,0,3

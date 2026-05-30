@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"boot_motor_accel","ridge-LSE",2.324,4.431,45.323,-13.689,0.267,0,0,3
+"boot_motor_accel","Huber",3.777,7.015,60.008,-31.26,0.1,0,0,3
+"boot_motor_accel","PMM",4.023,7.907,62.787,-18.679,0.133,0.248,0.178,3
+"boot_motor_accel","L1",7.937,24.147,99.125,-5.466,0.3,0,0,3
+"boot_motor_accel","LSE",10.447,26.987,127.934,-88.638,0.2,0,0,3

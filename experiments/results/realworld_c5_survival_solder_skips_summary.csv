@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"survival_solder_skips","ridge-LSE",0.619,0.043,3.503,0.101,0.233,0,0,3
+"survival_solder_skips","LSE",0.621,0.044,3.51,0.106,0.233,0,0,3
+"survival_solder_skips","Huber",0.625,0.047,3.383,-0.456,0.133,0,0,3
+"survival_solder_skips","PMM",0.629,0.042,3.539,0.058,0.2,0.593,0,3
+"survival_solder_skips","L1",0.633,0.038,3.339,-0.754,0.2,0,0,3

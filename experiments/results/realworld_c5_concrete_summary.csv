@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"concrete","Huber",0.507,0.023,6.642,-0.28,0.367,0,0,3
+"concrete","LSE",0.51,0.022,6.683,-0.179,0.2,0,0,3
+"concrete","ridge-LSE",0.513,0.027,6.703,-0.291,0.167,0,0,3
+"concrete","L1",0.521,0.039,6.753,-0.665,0.167,0,0,3
+"concrete","PMM",0.521,0.028,6.839,-0.053,0.1,0.313,0,3

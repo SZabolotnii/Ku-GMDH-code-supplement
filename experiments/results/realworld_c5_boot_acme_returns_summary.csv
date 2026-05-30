@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"boot_acme_returns","Huber",0.998,0.286,0.083,-0.015,0.2,0,0,3
+"boot_acme_returns","L1",1.122,0.372,0.091,-0.02,0.175,0,0,3
+"boot_acme_returns","ridge-LSE",1.141,0.848,0.093,0,0.225,0,0,3
+"boot_acme_returns","PMM",1.46,2.19,0.107,0.019,0.175,0.353,0.017,3
+"boot_acme_returns","LSE",1.484,2.474,0.104,0.001,0.225,0,0,3

@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"islr_credit_balance","PMM",0.288,0.047,82.455,-8.164,0.333,0.77,0,3
+"islr_credit_balance","ridge-LSE",0.3,0.063,91.415,-3.56,0.233,0,0,3
+"islr_credit_balance","Huber",0.306,0.059,83.448,-16.702,0.133,0,0,3
+"islr_credit_balance","L1",0.306,0.047,79.869,-24.136,0.133,0,0,3
+"islr_credit_balance","LSE",0.307,0.084,90.563,-4.463,0.167,0,0,3
