@@ -1,0 +1,11 @@
+# R / build
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+# OS
+.DS_Store
+# Large raw datasets & per-row prediction dumps (not redistributed; licensed data — see paper)
+data/
+*_predictions.csv

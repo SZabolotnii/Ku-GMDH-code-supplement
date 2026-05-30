@@ -1,0 +1,27 @@
+Package: gmdhpmm
+Title: GMDH with PMM Coefficient Estimation (Paper 1 of the GMDH-Kunchenko program)
+Version: 0.1.0
+Authors@R: c(
+    person("Serhii", "Zabolotnii", role = "aut"),
+    person("Aiona", role = c("aut", "cre"), email = "ayonahostinger@gmail.com"))
+Description: Reference implementation for Paper 1 of the GMDH-Kunchenko research
+    program. Implements MIA-GMDH (Group Method of Data Handling) whose inner
+    coefficient-estimation step is replaced by an automatic dispatch between
+    least squares (LSE) and the Polynomial Maximization Method (PMM2 / PMM3),
+    keyed on bootstrap-stabilized residual cumulants of each partial model.
+    The hard PMM estimators are delegated to the school's 'EstemPMM' package
+    (lm_pmm2 / lm_pmm3); the novel contributions here are the bootstrap
+    cumulant stabilization on small GMDH partitions and the per-partial-model
+    dispatch inside the tournament.
+License: GPL-3
+Encoding: UTF-8
+Imports:
+    methods,
+    stats,
+    utils,
+    data.table,
+    EstemPMM
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+RoxygenNote: 7.3.2

@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"insurance_autoclaims_paid","LSE",0.999,0.001,1502.537,5.77,0.2,0,0,3
+"insurance_autoclaims_paid","PMM",0.999,0.001,1519.391,46.319,0.4,0,0,3
+"insurance_autoclaims_paid","ridge-LSE",1,0.003,1505.948,14.829,0.4,0,0,3
+"insurance_autoclaims_paid","Huber",1.026,0.003,1319.154,-578.594,0,0,0,3
+"insurance_autoclaims_paid","L1",1.048,0.004,1297.302,-788.494,0,0,0,3

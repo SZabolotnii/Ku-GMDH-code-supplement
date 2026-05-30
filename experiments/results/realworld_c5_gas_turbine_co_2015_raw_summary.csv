@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"gas_turbine_co_2015_raw","Huber",0.54,0.065,0.552,-0.047,0.4,0,0,3
+"gas_turbine_co_2015_raw","PMM",0.542,0.067,0.577,-0.002,0.1,0.844,0,3
+"gas_turbine_co_2015_raw","ridge-LSE",0.546,0.065,0.58,0.004,0,0,0,3
+"gas_turbine_co_2015_raw","L1",0.548,0.07,0.553,-0.069,0.4,0,0,3
+"gas_turbine_co_2015_raw","LSE",0.549,0.066,0.58,0.001,0.1,0,0,3

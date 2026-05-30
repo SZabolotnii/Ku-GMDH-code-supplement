@@ -1,0 +1,11 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"fremtpl2_severity_log","LSE",1.025,0.112,0.819,0.011,0.3,0,0,3
+"fremtpl2_severity_log","ridge-LSE",1.082,0.371,0.822,0,0.35,0,0,3
+"fremtpl2_severity_log","Huber",1.092,0.305,0.793,0.108,0.1,0,0,3
+"fremtpl2_severity_log","PMM",1.093,0.234,0.827,-0.003,0.25,0.244,0,3
+"fremtpl2_severity_log","L1",1.342,0.762,0.789,0.155,0,0,0,3
+"fremtpl2_severity_raw","Huber",1.003,0.003,2606.509,-2081.023,0.25,0,0,3
+"fremtpl2_severity_raw","L1",1.004,0.003,2593.151,-2071.39,0.1,0,0,3
+"fremtpl2_severity_raw","PMM",1.037,0.079,4091.435,-140.167,0.15,0.122,0,3
+"fremtpl2_severity_raw","LSE",1.095,0.295,4094.458,-99.589,0.25,0,0,3
+"fremtpl2_severity_raw","ridge-LSE",1.104,0.36,4106.242,-154.435,0.25,0,0,3

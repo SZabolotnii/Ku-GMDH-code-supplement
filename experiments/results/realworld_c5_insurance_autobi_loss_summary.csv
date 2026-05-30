@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"insurance_autobi_loss","Huber",0.991,0.025,3.733,-2.115,0.15,0,0,3
+"insurance_autobi_loss","L1",0.994,0.018,3.692,-2.451,0.05,0,0,3
+"insurance_autobi_loss","ridge-LSE",1.004,0.045,4.985,0.359,0.1,0,0,3
+"insurance_autobi_loss","LSE",1.018,0.152,5.157,0.69,0.35,0,0,3
+"insurance_autobi_loss","PMM",1.57,2.612,5.098,0.578,0.35,0.636,0,3

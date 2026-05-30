@@ -1,0 +1,6 @@
+"candidate","method","nrmse_mean","nrmse_sd","mae_mean","bias_mean","win_rate","pmm2_share","pmm3_share","layers_mean"
+"sru_y1_dynamic","ridge-LSE",0.237,0.034,0.004,0,0.3,0,0,3
+"sru_y1_dynamic","PMM",0.238,0.046,0.004,0,0.3,0.728,0,3
+"sru_y1_dynamic","L1",0.247,0.028,0.004,0,0.2,0,0,3
+"sru_y1_dynamic","LSE",0.251,0.042,0.004,0,0.1,0,0,3
+"sru_y1_dynamic","Huber",0.272,0.052,0.004,0,0.1,0,0,3
