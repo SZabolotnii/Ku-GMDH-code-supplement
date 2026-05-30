@@ -1,0 +1,8 @@
+"section","n","t_lse_s","t_pmm_s","overhead_x","pmm2_share","component","t_s","pct_of_total"
+"scalability",500,0.036,0.271,7.53,0.889,NA,NA,NA
+"scalability",1000,0.017,0.436,25.65,0.944,NA,NA,NA
+"scalability",2000,0.019,0.738,38.84,0.778,NA,NA,NA
+"scalability",5000,0.028,1.574,56.21,0.778,NA,NA,NA
+"component_n2000",2000,NA,NA,NA,NA,"a_lse_warmstart",0.000315,1.5
+"component_n2000",2000,NA,NA,NA,NA,"b_bootstrap_cumulant_B200",0.017115,81.9
+"component_n2000",2000,NA,NA,NA,NA,"c_pmm2_newton",0.00346,16.6
