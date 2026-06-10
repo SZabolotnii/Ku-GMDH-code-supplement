@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 # C5 real-world / built-in candidate comparison for Paper 1.
 #
-# This script takes the shortlist from shared/datasets/screen_cumulants.R and
-# runs the full GMDH tournament with identical outer-loop settings for:
+# This script takes the real-data shortlist and runs the full GMDH tournament
+# with identical outer-loop settings for:
 # PMM-auto, LSE, ridge-LSE, Huber, and L1.
 #
 # It is still a candidate-stage experiment, not a final flagship. The goal is
@@ -48,6 +48,8 @@ find_root <- function() {
   here <- normalizePath(getwd(), mustWork = TRUE)
   cur <- here
   repeat {
+    if (file.exists(file.path(cur, "DESCRIPTION")) &&
+        dir.exists(file.path(cur, "R"))) return(cur)
     if (file.exists(file.path(cur, "ROADMAP.md")) &&
         file.exists(file.path(cur, "paper-1-gmdh-pmm", "code", "DESCRIPTION"))) return(cur)
     parent <- dirname(cur)
@@ -57,25 +59,65 @@ find_root <- function() {
 }
 
 root <- find_root()
-external_manifest_path <- file.path(root, "shared", "datasets", "external", "external_candidates.csv")
+standalone_repo <- file.exists(file.path(root, "DESCRIPTION")) &&
+  dir.exists(file.path(root, "R"))
+
+manifest_candidates <- if (standalone_repo) {
+  c(file.path(root, "datasets", "external", "external_candidates.csv"),
+    file.path(root, "shared", "datasets", "external", "external_candidates.csv"))
+} else {
+  c(file.path(root, "shared", "datasets", "external", "external_candidates.csv"),
+    file.path(root, "datasets", "external", "external_candidates.csv"))
+}
+external_manifest_path <- manifest_candidates[file.exists(manifest_candidates)][1]
+if (!length(external_manifest_path) || is.na(external_manifest_path)) {
+  external_manifest_path <- character(0)
+}
 
 external_manifest <- function() {
-  if (!file.exists(external_manifest_path)) return(data.frame())
+  if (!length(external_manifest_path) || !file.exists(external_manifest_path)) return(data.frame())
   utils::read.csv(external_manifest_path, stringsAsFactors = FALSE)
+}
+
+resolve_external_path <- function(path, must_work = TRUE) {
+  if (grepl("^(/|[A-Za-z]:)", path)) {
+    candidates <- path
+  } else {
+    candidates <- c(file.path(root, path))
+    if (standalone_repo) {
+      candidates <- c(
+        candidates,
+        file.path(root, "datasets", "external", basename(path)),
+        file.path(root, sub("^shared/datasets/external/processed/", "datasets/external/", path))
+      )
+    }
+  }
+  candidates <- unique(candidates)
+  hit <- candidates[file.exists(candidates)][1]
+  if (length(hit) && !is.na(hit)) return(hit)
+  if (must_work) {
+    stop("External candidate file not found. Tried: ",
+         paste(candidates, collapse = "; "),
+         "\nOnly selected public datasets are shipped in this supplement; ",
+         "see datasets/README.md.")
+  }
+  NULL
 }
 
 external_candidate_ids <- function() {
   x <- external_manifest()
-  if (!nrow(x)) character(0) else x$id
+  if (!nrow(x)) return(character(0))
+  if (!standalone_repo) return(x$id)
+  keep <- vapply(x$path, function(path) !is.null(resolve_external_path(path, must_work = FALSE)),
+                 logical(1))
+  x$id[keep]
 }
 
 external_candidate_data <- function(id) {
   manifest <- external_manifest()
   if (!nrow(manifest) || !(id %in% manifest$id)) return(NULL)
   row <- manifest[match(id, manifest$id), ]
-  data_path <- row$path[[1]]
-  if (!grepl("^(/|[A-Za-z]:)", data_path)) data_path <- file.path(root, data_path)
-  if (!file.exists(data_path)) stop("External candidate file not found: ", data_path)
+  data_path <- resolve_external_path(row$path[[1]])
   d <- stats::na.omit(utils::read.csv(data_path, stringsAsFactors = TRUE))
   formula <- stats::as.formula(row$formula[[1]])
   mf <- stats::model.frame(formula, data = d, na.action = stats::na.omit)

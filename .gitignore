@@ -4,6 +4,10 @@
 .RData
 .Ruserdata
 *.Rproj
+*.tar.gz
+*.Rcheck/
+..Rcheck/
+experiments/results_local/
 # OS
 .DS_Store
 # Large raw datasets & per-row prediction dumps (not redistributed; licensed data — see paper)
