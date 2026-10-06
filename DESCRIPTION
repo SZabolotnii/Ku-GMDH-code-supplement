@@ -1,20 +1,30 @@
 Package: gmdhpmm
-Title: GMDH with PMM Coefficient Estimation (Paper 1 of the GMDH-Kunchenko program)
-Version: 0.1.0
-Authors@R: c(
-    person("Serhii", "Zabolotnii", role = "aut"),
-    person("Aiona", role = c("aut", "cre"), email = "ayonahostinger@gmail.com"))
-Description: Reference implementation for Paper 1 of the GMDH-Kunchenko research
-    program. Implements MIA-GMDH (Group Method of Data Handling) whose inner
-    coefficient-estimation step is replaced by an automatic dispatch between
-    least squares (LSE) and the Polynomial Maximization Method (PMM2 / PMM3),
-    keyed on bootstrap-stabilized residual cumulants of each partial model.
-    The hard PMM estimators are delegated to the school's 'EstemPMM' package
-    (lm_pmm2 / lm_pmm3); the novel contributions here are the bootstrap
-    cumulant stabilization on small GMDH partitions and the per-partial-model
-    dispatch inside the tournament.
+Type: Package
+Title: Group Method of Data Handling with Polynomial Maximization Method Estimators
+Version: 0.2.0
+Date: 2026-10-05
+Authors@R:
+    person("Serhii", "Zabolotnii",
+           email = "zabolotniua@gmail.com",
+           role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0003-0242-2234"))
+Description:
+    Implements multilayer Group Method of Data Handling ('GMDH') regression whose
+    inner coefficient-estimation step chooses an estimator for each partial model
+    inside the self-organizing tournament. The library contains least squares,
+    ridge least squares, Huber, least absolute deviations, the Polynomial
+    Maximization Method estimators 'PMM2' and 'PMM3' from the 'EstemPMM' package,
+    and windowed (weak-moment) 'PMM' estimators that remain stable under heavy
+    tails. The estimator is chosen either by a residual-cumulant dispatch with
+    bootstrap stabilization on small partitions, or by a validation gate that
+    compares the candidates by inner cross-validation (random or blocked folds).
+    Also provides reserve-aware external criteria and loaders for open drilling
+    datasets.
 License: GPL-3
+URL: https://github.com/SZabolotnii/EstemPMM-GMDH
+BugReports: https://github.com/SZabolotnii/EstemPMM-GMDH/issues
 Encoding: UTF-8
+Depends: R (>= 3.5.0)
 Imports:
     methods,
     stats,
@@ -24,4 +34,4 @@ Imports:
 Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
-RoxygenNote: 7.3.2
+Config/roxygen2/version: 8.0.0

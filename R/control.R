@@ -16,9 +16,23 @@
 #'   "reserve-aware" (actuarial C5 experiments), or "spike-aware" (industrial
 #'   emissions C5 experiments).
 #' @param pmm_mode PMM3 kappa handling: "fixed" (default) or "adaptive".
-#' @param force_method estimation override: "auto" (default), "LSE",
-#'   "ridge-LSE", "Huber", "L1", "PMM2", or "PMM3". Used for ablations
-#'   and baselines.
+#' @param force_method inner estimator: "auto" (default, cumulant dispatch
+#'   between LSE, PMM2 and PMM3), "auto-weak" (cumulant dispatch that adds the
+#'   windowed estimators, \code{\link{dispatch_method_weak}}), "auto-valgate"
+#'   (validation gate: the candidate with the lowest inner-cross-validated
+#'   trimmed RMSE), or one fixed estimator: "LSE", "ridge-LSE", "Huber", "L1",
+#'   "PMM2", "PMM3", "WPMM2", "WPMM3" or "PATP3".
+#' @param valgate_candidates estimators compared by \code{"auto-valgate"}
+#'   (default LSE, Huber, L1, WPMM2, WPMM3).
+#' @param valgate_folds number of inner folds for \code{"auto-valgate"}
+#'   (default 4); nodes with fewer than 40 rows fall back to LSE.
+#' @param patp_alpha PATP exponent for \code{"PATP3"}; NULL (default) chooses
+#'   it per fit.
+#' @param weak_sigma_mult window width of the windowed estimators WPMM2 and
+#'   WPMM3, as a multiple of the robust residual scale (default 2.5).
+#' @param kurt_heavy_skew,kurt_heavy_sym excess-kurtosis thresholds of
+#'   \code{"auto-weak"} above which a skewed (default 8) or symmetric
+#'   (default 3) residual is sent to WPMM2 or WPMM3.
 #' @param ridge_lambda ridge penalty for "ridge-LSE" (default 1e-8, matching
 #'   EstemPMM's PMM2 regularization scale). The intercept is not penalized.
 #' @param huber_k Huber tuning constant for the "Huber" baseline (default 1.345).
@@ -40,6 +54,10 @@
 #' @param skew_strong |gamma3| above which PMM2 is taken outright (default 1.0).
 #' @param g2_threshold g2 cutoff for PMM2 (default 0.95).
 #' @param kurt_threshold gamma4 cutoff for PMM3 (default -0.7).
+#' @param valgate_inner inner-fold layout for \code{"auto-valgate"}:
+#'   \code{"blocked"} (default, contiguous blocks) or \code{"random"}
+#'   (interleaved folds from a fixed deterministic permutation; used only for
+#'   the inner-fold ablation, and it does not touch the RNG stream).
 #' @param seed RNG seed for the train/validation split (default NULL).
 #' @param boot_seed RNG seed passed to the bootstrap diagnostics (default NULL).
 #' @return a named list of validated control parameters.
@@ -47,10 +65,16 @@
 gmdh_pmm_control <- function(split_ratio = 0.6, F = 10L, L_max = 10L,
                              epsilon = 1e-3, alpha = 0.05, B = 500L,
                              max_iter = 50L, tol = 1e-6,
-                             criterion = c("MSE", "PMM-loss", "reserve-aware", "spike-aware"),
+                             criterion = c("MSE", "MAE", "PMM-loss", "reserve-aware", "spike-aware"),
                              pmm_mode = c("fixed", "adaptive"),
-                             force_method = c("auto", "LSE", "ridge-LSE", "Huber", "L1", "PMM2", "PMM3", "WPMM2"),
+                             force_method = c("auto", "LSE", "ridge-LSE", "Huber", "L1", "PMM2", "PMM3",
+                                              "WPMM2", "WPMM3", "PATP3", "auto-weak", "auto-valgate"),
+                             valgate_candidates = c("LSE", "Huber", "L1", "WPMM2", "WPMM3"),
+                             valgate_folds = 4L,
+                             valgate_inner = c("blocked", "random"),
+                             patp_alpha = NULL,
                              weak_sigma_mult = 2.5,
+                             kurt_heavy_skew = 8.0, kurt_heavy_sym = 3.0,
                              ridge_lambda = 1e-8, huber_k = 1.345,
                              reserve_weight = 1, tail_weight = 2,
                              overreserve_weight = 0.25, tail_prob = 0.9,
@@ -61,6 +85,7 @@ gmdh_pmm_control <- function(split_ratio = 0.6, F = 10L, L_max = 10L,
   criterion <- match.arg(criterion)
   pmm_mode <- match.arg(pmm_mode)
   force_method <- match.arg(force_method)
+  valgate_inner <- match.arg(valgate_inner)
   stopifnot(split_ratio > 0, split_ratio < 1, F >= 1, L_max >= 1, B >= 0)
   stopifnot(is.finite(ridge_lambda), ridge_lambda >= 0)
   stopifnot(is.finite(huber_k), huber_k > 0)
@@ -84,7 +109,10 @@ gmdh_pmm_control <- function(split_ratio = 0.6, F = 10L, L_max = 10L,
     huber_k = huber_k, reserve_weight = reserve_weight,
     tail_weight = tail_weight, overreserve_weight = overreserve_weight,
     tail_prob = tail_prob, train_index = train_index, val_index = val_index,
-    robust = robust, weak_sigma_mult = weak_sigma_mult,
+    robust = robust, weak_sigma_mult = weak_sigma_mult, patp_alpha = patp_alpha,
+    valgate_candidates = valgate_candidates, valgate_folds = valgate_folds,
+    valgate_inner = valgate_inner,
+    kurt_heavy_skew = kurt_heavy_skew, kurt_heavy_sym = kurt_heavy_sym,
     skew_min = skew_min, skew_strong = skew_strong,
     g2_threshold = g2_threshold, kurt_threshold = kurt_threshold,
     seed = seed, boot_seed = boot_seed

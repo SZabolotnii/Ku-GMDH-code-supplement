@@ -9,6 +9,32 @@ and archived result tables for the cumulant-adaptive GMDH-PMM method. Large
 licensed raw datasets and monorepo-only manuscript notes are intentionally not
 redistributed here.
 
+## Revision R1 (branch `r1`, 2026-10-06)
+
+The tag `kybernetika-7414-submitted` marks the code as submitted. This branch carries the
+corrections prepared for the revision. The package is `gmdhpmm` 0.2.0, the version on
+which every R1 number was computed.
+
+- All estimator arms of the cascade and real-data experiments share one inner
+  training/validation partition per replication. Earlier, each arm drew its own, which
+  mixed estimator effects with split noise.
+- Synthetic noise is standardized with population moments, not sample moments. Sample
+  centring made the noise orthogonal to the intercept and halved the measured bimodal ARE.
+- Summaries report medians with paired tests. Coverage is analysed at the seed level.
+
+Run every script from the repository root. Pre-fix outputs are kept next to the `_v2` ones.
+
+| Manuscript item | Script | Output |
+|---|---|---|
+| Tab. synthetic, Fig. 1 | `Rscript experiments/run_synthetic.R 1000 2000 500 _v2` | `experiments/results/synthetic_h2_v2.csv` |
+| Tab. cascade | `Rscript experiments/run_cascade.R 200 2000 200` | `experiments/results/cascade_recovery_v2{,_raw}.csv` |
+| Tab. ablation | `Rscript experiments/revision/e3_ablation.R 50 2000 200 _v2` | `experiments/revision/e3_ablation_v2.csv` |
+| Tab. realdata | `Rscript experiments/run_realworld.R <id> 30 200 _v2` for `islr_credit_balance`, `concrete`, `airquality_ozone`, `mass_cars93_mpg`, `survival_solder_skips`, then `Rscript experiments/revision/e11_realdata_v2.R` | `experiments/results/realworld_c5_<id>_v2_*.csv`, `experiments/revision/e11_realdata_v2.csv` |
+| Bootstrap-count check | `Rscript experiments/run_realworld.R islr_credit_balance 30 {80,500} _v2_B{80,500}` | `experiments/results/realworld_c5_islr_credit_balance_v2_B*.csv` |
+| Coverage (seed level) | `Rscript experiments/revision/e10_coverage_cluster.R` | `experiments/revision/e10_coverage_cluster.csv` |
+| PMM3 ARE vs n (supplement) | `Rscript experiments/revision/e9_pmm3_nsweep.R 400` | `experiments/revision/e9_pmm3_nsweep.csv` |
+| Tab. synthmech, VAR audit | `Rscript experiments/run_synthetic_var_break.R` (unchanged; fixed split for all arms) | `experiments/results/synthetic_var_audit_*.csv` |
+
 ## Scope
 
 `gmdhpmm` implements MIA-GMDH whose inner coefficient step dispatches between

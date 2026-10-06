@@ -9,7 +9,7 @@
 # to decide which screened datasets deserve deeper C5 treatment.
 #
 # Run from the package directory:
-#   Rscript experiments/run_realworld.R [candidate|all|domain|extended|insurance|external] [R] [B]
+#   Rscript experiments/run_realworld.R [candidate|all|domain|extended|insurance|external] [R] [B] [OUT_TAG]
 
 suppressMessages(
   if (requireNamespace("gmdhpmm", quietly = TRUE)) library(gmdhpmm)
@@ -20,6 +20,7 @@ args <- commandArgs(trailingOnly = TRUE)
 CAND <- if (length(args) >= 1) args[1] else "airquality_ozone"
 R_REP <- if (length(args) >= 2) as.integer(args[2]) else 50L
 B <- if (length(args) >= 3) as.integer(args[3]) else 80L
+OUT_TAG <- if (length(args) >= 4) args[4] else ""   # e.g. "_v2" keeps old artifacts
 TEST_FRAC <- 0.25
 L_MAX <- 3L
 F_KEEP <- 6L
@@ -308,7 +309,9 @@ one_rep <- function(dat, rep_id, seed) {
 
   rows <- list()
   for (method in c("PMM", "LSE", "ridge-LSE", "Huber", "L1")) {
-    fit <- try(gmdh_pmm(xs$X_train, y_train, ctrl_for(method, seed + match(method, c("PMM", "LSE", "ridge-LSE", "Huber", "L1")))),
+    # One inner train/validation seed for every arm (before 2026-10-06 each arm
+    # had seed + its index, so arms grew cascades on different partitions).
+    fit <- try(gmdh_pmm(xs$X_train, y_train, ctrl_for(method, seed)),
                silent = TRUE)
     if (inherits(fit, "try-error")) {
       rows[[length(rows) + 1]] <- data.frame(
@@ -346,6 +349,7 @@ summarize <- function(raw) {
     data.frame(
       candidate = g$candidate[1],
       method = g$method[1],
+      nrmse_median = round(stats::median(g$nrmse), 3),
       nrmse_mean = round(mean(g$nrmse), 3),
       nrmse_sd = round(stats::sd(g$nrmse), 3),
       mae_mean = round(mean(g$mae), 3),
@@ -357,7 +361,7 @@ summarize <- function(raw) {
       stringsAsFactors = FALSE
     )
   }))
-  out[order(out$candidate, out$nrmse_mean), ]
+  out[order(out$candidate, out$nrmse_median), ]
 }
 
 builtin_candidates <- c("airquality_ozone", "iris_versicolor", "toothgrowth")
@@ -395,7 +399,7 @@ suffix <- switch(CAND,
                  extended = "_extended",
                  external = "_external",
                  paste0("_", gsub("[^A-Za-z0-9]+", "_", CAND)))
-stem <- paste0("realworld_c5", suffix)
+stem <- paste0("realworld_c5", suffix, OUT_TAG)
 utils::write.csv(raw, file.path(outdir, paste0(stem, "_raw.csv")), row.names = FALSE)
 utils::write.csv(res, file.path(outdir, paste0(stem, "_summary.csv")), row.names = FALSE)
 

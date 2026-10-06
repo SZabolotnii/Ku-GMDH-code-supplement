@@ -34,6 +34,7 @@ args  <- commandArgs(trailingOnly = TRUE)
 R_REP <- if (length(args) >= 1) as.integer(args[1]) else 50L
 N     <- if (length(args) >= 2) as.integer(args[2]) else 2000L
 B     <- if (length(args) >= 3) as.integer(args[3]) else 200L
+OUT_TAG <- if (length(args) >= 4) args[4] else ""
 SIGMA <- 1.0
 THETA_TRUE <- c(0.5, 1.5, -1.0, 0.8, 0.6, -0.4)   # canonical KG-2 order
 
@@ -42,14 +43,18 @@ THETA_TRUE <- c(0.5, 1.5, -1.0, 0.8, 0.6, -0.4)   # canonical KG-2 order
 # (platykurtic uniform), plus Gaussian and two HEAVY-TAILED DECOYS where PMM
 # must NOT activate (laplace = leptokurtic symmetric, contam = 90/10 mixture).
 std <- function(x) (x - mean(x)) / stats::sd(x)
+# Population standardization (2026-10-06): std() centred the SAMPLE, which makes
+# the noise exactly orthogonal to the intercept column and hands LSE a free
+# intercept; for the bimodal regime that alone halved ARE_emp (3.10 vs 1/g3 = 6.12).
+# The constants below standardize with the POPULATION mean and variance.
 gens <- list(
   Gaussian = function(n) rnorm(n),                                   # null
   exp      = function(n) rexp(n) - 1,                                # strong + skew (PMM2)
-  lognorm  = function(n) std(rlnorm(n, 0, 0.5)),                     # A3-like skew (PMM2)
+  lognorm  = function(n) (rlnorm(n, 0, 0.5) - exp(0.125)) / sqrt((exp(0.25) - 1) * exp(0.25)),                     # A3-like skew (PMM2)
   uniform  = function(n) runif(n, -sqrt(3), sqrt(3)),               # platykurtic (PMM3)
-  bimodal  = function(n) std(sample(c(-1, 1), n, TRUE) * 1.3 + rnorm(n, 0, 0.45)),
+  bimodal  = function(n) (sample(c(-1, 1), n, TRUE) * 1.3 + rnorm(n, 0, 0.45)) / sqrt(1.3^2 + 0.45^2),
   laplace  = function(n) (rexp(n) - rexp(n)) / sqrt(2),             # leptokurtic DECOY
-  contam   = function(n) std(ifelse(runif(n) < 0.9, rnorm(n), rnorm(n, 0, 5)))  # mixture DECOY
+  contam   = function(n) ifelse(runif(n) < 0.9, rnorm(n), rnorm(n, 0, 5)) / sqrt(0.9 + 0.1 * 25)  # mixture DECOY
 )
 
 # population favored method (the "oracle" dispatch target) from 1e6 draws -----
@@ -175,7 +180,7 @@ cat(sprintf("  => claim (b) holds (some forced-PMM < LSE, and FULL >= worst forc
 # ---- persist ---------------------------------------------------------------
 outdir <- "experiments/revision"
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-utils::write.csv(res, file.path(outdir, "e3_ablation.csv"), row.names = FALSE)
+utils::write.csv(res, file.path(outdir, paste0("e3_ablation", OUT_TAG, ".csv")), row.names = FALSE)
 cat(sprintf("\nSaved %s | elapsed %.1fs\n",
-            file.path(outdir, "e3_ablation.csv"),
+            file.path(outdir, paste0("e3_ablation", OUT_TAG, ".csv")),
             as.numeric(difftime(Sys.time(), t0, units = "secs"))))

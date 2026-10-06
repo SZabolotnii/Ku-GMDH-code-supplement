@@ -30,12 +30,19 @@
 #' @return scalar criterion value (lower is better).
 #' @export
 external_criterion <- function(y_val, yhat_val, method = "LSE", diag = NULL,
-                               type = c("MSE", "PMM-loss", "reserve-aware", "spike-aware"),
+                               type = c("MSE", "MAE", "PMM-loss", "reserve-aware", "spike-aware"),
                                reserve_weight = 1, tail_weight = 2,
                                overreserve_weight = 0.25, tail_prob = 0.9) {
   type <- match.arg(type)
   e <- y_val - yhat_val
   mse <- mean(e^2)
+  # Robust (heavy-tail-safe) selection criterion: validation MAE. Under heavy-
+  # tailed residuals the squared MSE criterion is dominated by a few large
+  # validation residuals and tends to favour LSE-fitted structures; the MAE
+  # criterion gives the weak / robust inner estimators a level selection field
+  # (Ku_Weak_Moment Monte-Carlo discipline: never headline raw squared error
+  # under heavy tails).
+  if (type == "MAE") return(mean(abs(e)))
   if (type %in% c("reserve-aware", "spike-aware")) {
     scale2 <- stats::var(y_val)
     if (!is.finite(scale2) || scale2 <= 1e-12) scale2 <- mean(y_val^2)

@@ -43,34 +43,32 @@ noise_gens <- list(
   Skew     = function(n) rexp(n) - 1            # gamma3 = 2, gamma4 = 6 -> PMM2
 )
 
-ctrl_pmm <- function() gmdh_pmm_control(B = B, L_max = L_MAX, F = 8L, epsilon = -Inf)
-ctrl_lse <- function() gmdh_pmm_control(B = 0, L_max = L_MAX, F = 8L, epsilon = -Inf,
-                                        force_method = "LSE")
-ctrl_ridge_lse <- function() gmdh_pmm_control(B = 0, L_max = L_MAX, F = 8L,
-                                              epsilon = -Inf,
-                                              force_method = "ridge-LSE",
-                                              ridge_lambda = 1e-8)
-ctrl_huber <- function() gmdh_pmm_control(B = 0, L_max = L_MAX, F = 8L,
-                                          epsilon = -Inf,
-                                          force_method = "Huber",
-                                          ridge_lambda = 1e-8)
-ctrl_l1 <- function() gmdh_pmm_control(B = 0, L_max = L_MAX, F = 8L,
-                                       epsilon = -Inf,
-                                       force_method = "L1",
-                                       ridge_lambda = 1e-8)
+# Every arm sees the SAME train/validation split and the same bootstrap seed.
+# (Before 2026-10-06 each arm drew its own split from the global RNG, so arm
+# differences mixed estimator effects with split noise; under Gaussian noise
+# that alone produced a spurious PMM-over-LSE gap at depth 4.)
+ctrl_arm <- function(arm, train, val, seed) {
+  base <- list(L_max = L_MAX, F = 8L, epsilon = -Inf,
+               train_index = train, val_index = val, boot_seed = seed)
+  extra <- switch(arm,
+                  PMM = list(B = B),
+                  LSE = list(B = 0, force_method = "LSE"),
+                  list(B = 0, force_method = arm, ridge_lambda = 1e-8))
+  do.call(gmdh_pmm_control, c(base, extra))
+}
+ARMS <- c("PMM", "LSE", "ridge-LSE", "Huber", "L1")
 
-# one Monte Carlo replication -> per-depth recovery for both arms
+# one Monte Carlo replication -> per-depth recovery for every arm
 one_rep <- function(gen, seed) {
   set.seed(seed)
   Xtr <- matrix(rnorm(N * D), N, D); ftr <- f_true(Xtr)
   ytr <- ftr + std(gen(N)) * 1.0
   Xte <- matrix(rnorm(N_TEST * D), N_TEST, D); fte <- f_true(Xte)
+  train <- sort(sample.int(N, floor(0.6 * N)))
+  val <- setdiff(seq_len(N), train)
 
-  fits <- list(PMM = gmdh_pmm(Xtr, ytr, ctrl_pmm()),
-               LSE = gmdh_pmm(Xtr, ytr, ctrl_lse()),
-               `ridge-LSE` = gmdh_pmm(Xtr, ytr, ctrl_ridge_lse()),
-               Huber = gmdh_pmm(Xtr, ytr, ctrl_huber()),
-               L1 = gmdh_pmm(Xtr, ytr, ctrl_l1()))
+  fits <- stats::setNames(lapply(ARMS, function(a)
+    gmdh_pmm(Xtr, ytr, ctrl_arm(a, train, val, seed))), ARMS)
   denom <- sqrt(mean((fte - mean(fte))^2))
 
   out <- list()
@@ -82,7 +80,7 @@ one_rep <- function(gen, seed) {
         arm = arm, depth = L,
         rmse = sqrt(mean((yh - fte)^2)) / denom,
         bias = mean(yh - fte),
-        pmm2 = as.integer(fit$layers[[L]]$methods["PMM2"]),
+        pmm2 = {m <- fit$layers[[L]]$methods; sum(m[names(m) == "PMM2"]) / sum(m)},
         stringsAsFactors = FALSE)
     }
   }
@@ -95,12 +93,26 @@ summarize <- function(label, gen, base_seed) {
     if (inherits(pr, "try-error")) NULL else { pr$rep <- r; pr }
   })
   df <- do.call(rbind, Filter(Negate(is.null), reps))
+  df$noise <- label
+  raw_all[[label]] <<- df
   agg <- do.call(rbind, lapply(split(df, list(df$arm, df$depth)), function(g) {
-    data.frame(noise = label, arm = g$arm[1], depth = g$depth[1],
+    lse <- df[df$arm == "LSE" & df$depth == g$depth[1], ]
+    m <- merge(g[, c("rep", "rmse")], lse[, c("rep", "rmse")], by = "rep")
+    wp <- if (g$arm[1] == "LSE") NA_real_ else
+      suppressWarnings(stats::wilcox.test(m$rmse.x, m$rmse.y, paired = TRUE)$p.value)
+    data.frame(noise = label, arm = g$arm[1], depth = g$depth[1], reps = nrow(g),
+               rmse_median = round(stats::median(g$rmse), 3),
+               rmse_q25  = round(stats::quantile(g$rmse, 0.25, names = FALSE), 3),
+               rmse_q75  = round(stats::quantile(g$rmse, 0.75, names = FALSE), 3),
                rmse_mean = round(mean(g$rmse), 3),
                rmse_sd   = round(stats::sd(g$rmse), 3),
+               rmse_max  = round(max(g$rmse), 3),
+               n_blowup  = sum(g$rmse > 0.5),
+               ratio_vs_lse_median = round(stats::median(m$rmse.x / m$rmse.y), 3),
+               wins_vs_lse = sum(m$rmse.x < m$rmse.y),
+               wilcox_p_vs_lse = signif(wp, 3),
                bias_mean = round(mean(g$bias), 4),
-               pmm2_frac = round(mean(g$pmm2 > 0, na.rm = TRUE), 2),
+               pmm2_share = round(mean(g$pmm2, na.rm = TRUE), 2),
                stringsAsFactors = FALSE)
   }))
   agg[order(agg$arm, agg$depth), ]
@@ -109,50 +121,40 @@ summarize <- function(label, gen, base_seed) {
 cat(sprintf("=== GMDH-PMM cascade / recovery (R=%d, n=%d, test=%d, L=%d, B=%d) ===\n\n",
             R_REP, N, N_TEST, L_MAX, B))
 t0 <- Sys.time()
+raw_all <- list()
 res <- rbind(summarize("Gaussian", noise_gens$Gaussian, 5000L),
              summarize("Skew",     noise_gens$Skew,     7000L))
 print(res, row.names = FALSE)
 
-# --- verdicts --------------------------------------------------------------
-deepest <- max(res$depth)
-skew_deep <- res[res$noise == "Skew" & res$depth == deepest, ]
-r_pmm <- skew_deep$rmse_mean[skew_deep$arm == "PMM"]
-r_lse <- skew_deep$rmse_mean[skew_deep$arm == "LSE"]
-r_ridge <- skew_deep$rmse_mean[skew_deep$arm == "ridge-LSE"]
-r_huber <- skew_deep$rmse_mean[skew_deep$arm == "Huber"]
-r_l1 <- skew_deep$rmse_mean[skew_deep$arm == "L1"]
-sd_pmm <- skew_deep$rmse_sd[skew_deep$arm == "PMM"]
-sd_lse <- skew_deep$rmse_sd[skew_deep$arm == "LSE"]
-sd_ridge <- skew_deep$rmse_sd[skew_deep$arm == "ridge-LSE"]
-sd_huber <- skew_deep$rmse_sd[skew_deep$arm == "Huber"]
-sd_l1 <- skew_deep$rmse_sd[skew_deep$arm == "L1"]
-
-cat(sprintf(
-  "\nAt depth %d under Skew:  recovery RMSE  PMM=%.3f vs LSE=%.3f vs ridge-LSE=%.3f vs Huber=%.3f vs L1=%.3f\n",
-  deepest, r_pmm, r_lse, r_ridge, r_huber, r_l1))
-cat(sprintf(
-  "                        RMSE SD       PMM=%.3f vs LSE=%.3f vs ridge-LSE=%.3f vs Huber=%.3f vs L1=%.3f\n",
-  sd_pmm, sd_lse, sd_ridge, sd_huber, sd_l1))
-cat(sprintf(">>> PMM beats unregularized LSE at depth under skew: %s\n", r_pmm < r_lse))
-cat(sprintf(">>> PMM beats ridge-LSE at depth under skew: %s\n", r_pmm < r_ridge))
-cat(sprintf(">>> PMM beats Huber at depth under skew: %s\n", r_pmm < r_huber))
-cat(sprintf(">>> PMM beats L1 at depth under skew: %s\n", r_pmm < r_l1))
+# --- verdicts (medians + paired tests; depth-4 means are driven by blow-ups) --
+for (nz in unique(res$noise)) for (L in sort(unique(res$depth))) {
+  sub <- res[res$noise == nz & res$depth == L & res$arm != "LSE", ]
+  for (i in seq_len(nrow(sub)))
+    cat(sprintf("%-8s depth %d  %-9s median ratio vs LSE %.3f  wins %d/%d  Wilcoxon p=%.3g\n",
+                nz, L, sub$arm[i], sub$ratio_vs_lse_median[i], sub$wins_vs_lse[i],
+                sub$reps[i], sub$wilcox_p_vs_lse[i]))
+}
 
 outdir <- "experiments/results"
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-utils::write.csv(res, file.path(outdir, "cascade_recovery.csv"), row.names = FALSE)
+# _v2: common-split protocol (2026-10-06). cascade_recovery.csv is the pre-fix
+# artifact behind Kybernetika 7414 Tab. cascade and is kept for provenance.
+utils::write.csv(res, file.path(outdir, "cascade_recovery_v2.csv"), row.names = FALSE)
+utils::write.csv(do.call(rbind, raw_all), file.path(outdir, "cascade_recovery_v2_raw.csv"),
+                 row.names = FALSE)
 
 # recovery-vs-depth plot (PMM vs LSE, by noise)
-png(file.path(outdir, "cascade_recovery.png"), width = 820, height = 460, res = 110)
+deepest <- max(res$depth)
+png(file.path(outdir, "cascade_recovery_v2.png"), width = 820, height = 460, res = 110)
 op <- par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
 for (nz in c("Gaussian", "Skew")) {
   sub <- res[res$noise == nz, ]
-  yl <- range(sub$rmse_mean)
-  plot(NA, xlim = c(1, deepest), ylim = yl, xlab = "GMDH depth", ylab = "recovery RMSE",
+  yl <- range(sub$rmse_median)
+  plot(NA, xlim = c(1, deepest), ylim = yl, xlab = "GMDH depth", ylab = "median recovery NRMSE",
        main = nz)
   for (a in c("PMM", "LSE", "ridge-LSE", "Huber", "L1")) {
     s <- sub[sub$arm == a, ]
-    lines(s$depth, s$rmse_mean, type = "b", pch = 19,
+    lines(s$depth, s$rmse_median, type = "b", pch = 19,
           col = switch(a, PMM = "firebrick", LSE = "grey45", `ridge-LSE` = "steelblue",
                        Huber = "darkgreen", L1 = "purple4"))
   }
@@ -162,6 +164,6 @@ for (nz in c("Gaussian", "Skew")) {
 }
 par(op); invisible(dev.off())
 
-cat(sprintf("\nSaved %s (+ cascade_recovery.png) | elapsed %.1fs\n",
-            file.path(outdir, "cascade_recovery.csv"),
+cat(sprintf("\nSaved %s (+ _raw.csv, .png) | elapsed %.1fs\n",
+            file.path(outdir, "cascade_recovery_v2.csv"),
             as.numeric(difftime(Sys.time(), t0, units = "secs"))))

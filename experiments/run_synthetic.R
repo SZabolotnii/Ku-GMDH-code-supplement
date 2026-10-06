@@ -12,7 +12,7 @@
 # H2 pass (3.6): on PMM-favorable cells ARE_emp >= 1.1 and Wilcoxon p < 0.001;
 # across all cells Pearson rho(ARE_emp, ARE_theory) > 0.85.
 #
-# Run from the package directory:  Rscript experiments/run_synthetic.R [R] [n] [B]
+# Run from the package directory:  Rscript experiments/run_synthetic.R [R] [n] [B] [OUT_TAG]
 
 suppressMessages(
   if (requireNamespace("gmdhpmm", quietly = TRUE)) library(gmdhpmm)
@@ -23,19 +23,24 @@ args <- commandArgs(trailingOnly = TRUE)
 R_REP <- if (length(args) >= 1) as.integer(args[1]) else 200L
 N     <- if (length(args) >= 2) as.integer(args[2]) else 500L
 B     <- if (length(args) >= 3) as.integer(args[3]) else 200L
+OUT_TAG <- if (length(args) >= 4) args[4] else ""
 SIGMA <- 1.0
 THETA_TRUE <- c(0.5, 1.5, -1.0, 0.8, 0.6, -0.4)  # canonical KG-2 order
 
 # --- standardized noise generators (mean 0, variance 1) --------------------
 std <- function(x) (x - mean(x)) / stats::sd(x)
+# Population standardization (2026-10-06): std() centred the SAMPLE, which makes
+# the noise exactly orthogonal to the intercept column and hands LSE a free
+# intercept; for the bimodal regime that alone halved ARE_emp (3.10 vs 1/g3 = 6.12).
+# The constants below standardize with the POPULATION mean and variance.
 gens <- list(
   G        = function(n) rnorm(n),                                   # Gaussian
   exp      = function(n) rexp(n) - 1,                                # strong + skew
-  lognorm  = function(n) std(rlnorm(n, 0, 0.5)),                     # A3-like skew
+  lognorm  = function(n) (rlnorm(n, 0, 0.5) - exp(0.125)) / sqrt((exp(0.25) - 1) * exp(0.25)),                     # A3-like skew
   uniform  = function(n) runif(n, -sqrt(3), sqrt(3)),               # B3 platykurtic
-  bimodal  = function(n) std(sample(c(-1, 1), n, TRUE) * 1.3 + rnorm(n, 0, 0.45)),
+  bimodal  = function(n) (sample(c(-1, 1), n, TRUE) * 1.3 + rnorm(n, 0, 0.45)) / sqrt(1.3^2 + 0.45^2),
   laplace  = function(n) (rexp(n) - rexp(n)) / sqrt(2),             # B1 leptokurtic (decoy)
-  contam   = function(n) std(ifelse(runif(n) < 0.9, rnorm(n), rnorm(n, 0, 5)))  # C1 (decoy)
+  contam   = function(n) ifelse(runif(n) < 0.9, rnorm(n), rnorm(n, 0, 5)) / sqrt(0.9 + 0.1 * 25)  # C1 (decoy)
 )
 
 # population cumulants + theoretical favored method / ARE -------------------
@@ -116,10 +121,10 @@ cat(sprintf(">>> H2 %s\n", if (h2_are && h2_sig && h2_rho) "PASS" else "PARTIAL/
 # --- persist ---------------------------------------------------------------
 outdir <- "experiments/results"
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-utils::write.csv(res, file.path(outdir, "synthetic_h2.csv"), row.names = FALSE)
+utils::write.csv(res, file.path(outdir, paste0("synthetic_h2", OUT_TAG, ".csv")), row.names = FALSE)
 
 # ARE_emp vs ARE_theory scatter (H2 visual): points should track the y = x line.
-png(file.path(outdir, "are_emp_vs_theory.png"), width = 720, height = 640, res = 110)
+png(file.path(outdir, paste0("are_emp_vs_theory", OUT_TAG, ".png")), width = 720, height = 640, res = 110)
 lim <- range(0.8, res$ARE_theory, res$ARE_emp)
 plot(res$ARE_theory, res$ARE_emp, xlim = lim, ylim = lim, pch = 19,
      col = ifelse(res$favored == "LSE", "grey50", "firebrick"),
@@ -132,5 +137,5 @@ legend("topleft", c("PMM-favorable", "LSE (decoy)"), pch = 19,
 invisible(dev.off())
 
 cat(sprintf("\nSaved %s (+ are_emp_vs_theory.png) | elapsed %.1fs\n",
-            file.path(outdir, "synthetic_h2.csv"),
+            file.path(outdir, paste0("synthetic_h2", OUT_TAG, ".csv")),
             as.numeric(difftime(Sys.time(), t0, units = "secs"))))

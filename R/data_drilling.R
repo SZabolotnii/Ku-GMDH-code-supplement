@@ -89,21 +89,44 @@ load_volve_drilling <- function(path = "data/volve_onbottom.csv",
   y_raw <- d$rop5
   y <- if (target == "log_rop5") log(pmax(y_raw, 1e-6)) else y_raw
 
-  if (!is.null(transition_channel) && all(is.finite(d[[transition_channel]]))) {
-    trans <- locate_transition(d[[transition_channel]], k = k)
+  # Transition location. Prefer the requested objective channel (GR) when it has
+  # adequate finite coverage; otherwise fall back to a finite-safe torque/ROP proxy.
+  # The source actually used is recorded, and a degenerate/non-finite transition is a
+  # hard error (so the validation split can never silently change on missing data).
+  .zfin <- function(v) {                                   # finite-safe standardization
+    fin <- is.finite(v); m <- mean(v[fin]); s <- stats::sd(v[fin])
+    if (!is.finite(s) || s <= 0) s <- 1
+    out <- (v - m) / s; out[!is.finite(out)] <- 0; out
+  }
+  min_cov <- 0.80
+  use_channel <- !is.null(transition_channel) &&
+    isTRUE(mean(is.finite(d[[transition_channel]])) >= min_cov)
+  if (use_channel) {
+    ch <- d[[transition_channel]]
+    if (anyNA(ch) || any(!is.finite(ch)))                  # fill sparse gaps with the channel median
+      ch[!is.finite(ch)] <- stats::median(ch[is.finite(ch)])
+    trans <- locate_transition(ch, k = k)
+    transition_source <- transition_channel
   } else {
     # Proxy: combine standardized |d(torque)/dt| and |d(ROP)/dt| step magnitude.
     dtq <- abs(c(0, diff(d$tqa)))
     drp <- abs(c(0, diff(y_raw)))
-    z <- function(v) (v - mean(v)) / stats::sd(v)
-    proxy <- z(dtq) + z(drp)
+    proxy <- .zfin(dtq) + .zfin(drp)
     trans <- locate_transition(proxy, k = k)
+    transition_source <- if (is.null(transition_channel)) "torque_rop_proxy"
+                         else sprintf("torque_rop_proxy (%s coverage %.2f < %.2f)",
+                                      transition_channel, mean(is.finite(d[[transition_channel]])), min_cov)
+  }
+  if (length(trans) != 1L || !is.finite(trans) || trans < 1L || trans > nrow(d)) {
+    stop("load_volve_drilling: failed to locate a single finite transition index (source: ",
+         transition_source, ").")
   }
 
   list(
     X = X, y = y,
     regime = as.matrix(d[, c("stick_rt", "arc_gr_rt"), with = FALSE]),
-    depth = d$dept, transition = as.integer(trans), n = nrow(d),
+    depth = d$dept, transition = as.integer(trans),
+    transition_source = transition_source, n = nrow(d),
     predictors = predictors, target = target, segment = segment,
     dataset = "volve_15_9_F15"
   )
@@ -164,5 +187,266 @@ load_forge_drilling <- function(path = "data/Well_58-32_processed_pason_log.csv"
     depth = frame$dept, transition = as.integer(trans), n = nrow(frame),
     predictors = c("wob", "rpm", "tq", "dept"), target = target,
     segment = "processed", dataset = "utah_forge_58_32"
+  )
+}
+
+#' Resolve the local Ku_NG drilling data root
+#'
+#' Set \code{KU_NG_DATA_ROOT} to rerun the evidence pipeline on a local data
+#' checkout without editing scripts. If the environment variable is unset, the
+#' function falls back to a relative \code{data} directory in the current
+#' working directory.
+#'
+#' @param root optional explicit data root. If \code{NULL}, uses
+#'   \code{Sys.getenv("KU_NG_DATA_ROOT")} and then \code{"data"}.
+#' @return normalized path string; the path is not required to exist.
+#' @export
+ku_ng_data_root <- function(root = NULL) {
+  if (is.null(root) || !nzchar(root)) {
+    root <- Sys.getenv("KU_NG_DATA_ROOT", unset = "data")
+  }
+  normalizePath(root, mustWork = FALSE)
+}
+
+.drilling_dataset_catalog <- function() {
+  data.frame(
+    dataset_id = c(
+      "forge58_processed",
+      "forge58_raw",
+      "forge56_10sec",
+      "forge56_1sec",
+      "forge78b_10sec",
+      "forge78b_1sec",
+      "volve_onbottom",
+      "volve_real",
+      "volve_synthetic"
+    ),
+    relative_path = c(
+      "forge/Well_58-32_processed_pason_log.csv",
+      "forge/Well_58-32_raw_pason_log.csv",
+      "forge/well-56-32/56-32_10sec_standard.csv",
+      "forge/well-56-32/56-32_1sec_standard.csv",
+      "forge/well-78b-32/78b-32_10sec_standard.csv",
+      "forge/well-78b-32/78b-32_1sec_standard.csv",
+      "processed/volve_onbottom.parquet",
+      "processed/volve_15_9_F15_real.parquet",
+      "processed/volve_synthetic.parquet"
+    ),
+    role = c(
+      "primary_compact_depth_log",
+      "primary_large_time_log",
+      "external_validation",
+      "secondary_sparse_1sec",
+      "secondary_sparse_stress",
+      "secondary_sparse_1sec",
+      "primary_oilfield_onbottom",
+      "primary_oilfield_compact",
+      "synthetic_not_publication_evidence"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+.count_file_lines <- function(path) {
+  con <- file(path, open = "r")
+  on.exit(close(con), add = TRUE)
+  n <- 0L
+  repeat {
+    x <- readLines(con, n = 100000L, warn = FALSE)
+    if (!length(x)) break
+    n <- n + length(x)
+  }
+  n
+}
+
+#' Build a lightweight manifest for the local drilling data catalog
+#'
+#' This helper intentionally records only the project-relevant datasets, not
+#' every PDF/DLIS sidecar in the raw archives. Use the Paper 1B evidence script
+#' when a complete recursive manifest with hashes is needed.
+#'
+#' @param root Ku_NG data root.
+#' @param include_hash if \code{TRUE}, add md5 hashes via \code{tools::md5sum}.
+#' @param count_rows if \code{TRUE}, count text-file rows. Disabled by default
+#'   because the raw Pason logs are large.
+#' @return data.frame with dataset id, path, existence, size, and optional row
+#'   counts / hashes.
+#' @export
+drilling_data_manifest <- function(root = ku_ng_data_root(),
+                                   include_hash = FALSE,
+                                   count_rows = FALSE) {
+  catalog <- .drilling_dataset_catalog()
+  rows <- lapply(seq_len(nrow(catalog)), function(i) {
+    path <- file.path(root, catalog$relative_path[i])
+    exists <- file.exists(path)
+    info <- if (exists) file.info(path) else NULL
+    ext <- tolower(tools::file_ext(path))
+    line_count <- NA_integer_
+    if (exists && count_rows && ext %in% c("csv", "las", "lis", "asc")) {
+      line_count <- .count_file_lines(path)
+    }
+    hash <- NA_character_
+    if (exists && include_hash) hash <- unname(tools::md5sum(path))
+    data.frame(
+      dataset_id = catalog$dataset_id[i],
+      role = catalog$role[i],
+      relative_path = catalog$relative_path[i],
+      path = path,
+      exists = exists,
+      format = ext,
+      size_bytes = if (exists) as.numeric(info$size) else NA_real_,
+      line_count = line_count,
+      md5 = hash,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+.clean_drilling_numeric <- function(x, sentinel = -9990) {
+  out <- suppressWarnings(as.numeric(x))
+  out[!is.finite(out) | out <= sentinel] <- NA_real_
+  out
+}
+
+.zsafe <- function(v) {
+  s <- stats::sd(v, na.rm = TRUE)
+  m <- mean(v, na.rm = TRUE)
+  if (!is.finite(s) || s <= 0) s <- 1
+  out <- (v - m) / s
+  out[!is.finite(out)] <- 0
+  out
+}
+
+.forge_standard_path <- function(root, well, cadence) {
+  well <- match.arg(well, c("56-32", "78B-32"))
+  cadence <- match.arg(cadence, c("10sec", "1sec"))
+  if (well == "56-32") {
+    file.path(root, "forge", "well-56-32",
+              sprintf("56-32_%s_standard.csv", cadence))
+  } else {
+    file.path(root, "forge", "well-78b-32",
+              sprintf("78b-32_%s_standard.csv", cadence))
+  }
+}
+
+#' Load a Utah FORGE standard CSV as a drilling regression frame
+#'
+#' Supports the FORGE 56-32 / 78B-32 standard Pason exports used as the third-
+#' well evidence candidates for Paper 1B. The files contain a second units row;
+#' it is removed automatically. The returned object mirrors
+#' \code{\link{load_volve_drilling}} / \code{\link{load_forge_drilling}}.
+#'
+#' @param path optional explicit CSV path. If \code{NULL}, constructed from
+#'   \code{root}, \code{well}, and \code{cadence}.
+#' @param well \code{"56-32"} or \code{"78B-32"}.
+#' @param cadence \code{"10sec"} or \code{"1sec"}.
+#' @param root Ku_NG data root.
+#' @param target \code{"log_rop"} (default) or \code{"rop"}.
+#' @param k transition smoothing half-width.
+#' @param rop_cap maximum plausible ROP in ft/hour for quality filtering.
+#' @param min_optional_frac minimum non-missing fraction required before an
+#'   optional channel is admitted as a predictor.
+#' @return list with \code{X}, \code{y}, \code{regime}, \code{depth},
+#'   \code{transition}, \code{n}, and metadata fields.
+#' @export
+load_forge_standard_drilling <- function(path = NULL,
+                                         well = c("56-32", "78B-32"),
+                                         cadence = c("10sec", "1sec"),
+                                         root = ku_ng_data_root(),
+                                         target = c("log_rop", "rop"),
+                                         k = 200L,
+                                         rop_cap = 1000,
+                                         min_optional_frac = 0.80) {
+  well <- match.arg(well)
+  cadence <- match.arg(cadence)
+  target <- match.arg(target)
+  if (is.null(path)) path <- .forge_standard_path(root, well, cadence)
+  if (!file.exists(path)) stop("FORGE standard CSV not found: ", path)
+
+  d <- data.table::fread(path, na.strings = c("", "NA", "N/A"))
+  if (nrow(d) > 0 && "Date" %in% names(d) &&
+      identical(tolower(as.character(d$Date[1])), "date/time")) {
+    d <- d[-1L, ]
+  }
+
+  need <- c(
+    "Bit Depth", "Depth Hole Total Vertical Depth",
+    "Rate of Penetration (Depth/Hour)", "Weight on Bit",
+    "Rotary Revolutions per Minute"
+  )
+  miss <- setdiff(need, names(d))
+  if (length(miss)) stop("FORGE standard column(s) not found: ", paste(miss, collapse = ", "))
+
+  get <- function(nm) .clean_drilling_numeric(d[[nm]])
+  frame <- data.frame(
+    dept = get("Bit Depth"),
+    tvd = get("Depth Hole Total Vertical Depth"),
+    rop = get("Rate of Penetration (Depth/Hour)"),
+    wob = get("Weight on Bit"),
+    rpm = get("Rotary Revolutions per Minute"),
+    stringsAsFactors = FALSE
+  )
+  optional_map <- c(
+    diff_pressure = "Differential Pressure",
+    flow = "Flow In",
+    top_drive_torque = "Top Drive Torque",
+    downhole_torque = "Downhole Torque",
+    gamma = "Gamma Measured while Drilling",
+    stick = "Stick Slip"
+  )
+  for (nm in names(optional_map)) {
+    src <- optional_map[[nm]]
+    if (src %in% names(d)) frame[[nm]] <- get(src)
+  }
+
+  ok <- is.finite(frame$rop) & frame$rop > 0 & frame$rop < rop_cap &
+    is.finite(frame$dept) & is.finite(frame$tvd) &
+    is.finite(frame$wob) & frame$wob >= 0 &
+    is.finite(frame$rpm) & frame$rpm > 0
+  frame <- frame[ok, , drop = FALSE]
+  frame <- frame[order(frame$dept), , drop = FALSE]
+  if (!nrow(frame)) stop("No usable FORGE standard rows after quality filtering: ", path)
+
+  predictors <- c("wob", "rpm", "dept", "tvd")
+  optional_predictors <- setdiff(names(frame), c("rop", predictors))
+  for (nm in optional_predictors) {
+    frac <- mean(is.finite(frame[[nm]]))
+    if (is.finite(frac) && frac >= min_optional_frac) {
+      predictors <- c(predictors, nm)
+    }
+  }
+  keep <- stats::complete.cases(frame[, c("rop", predictors), drop = FALSE])
+  frame <- frame[keep, , drop = FALSE]
+  if (nrow(frame) < 30) stop("Too few usable rows for FORGE standard frame: ", nrow(frame))
+
+  X <- as.matrix(frame[, predictors, drop = FALSE])
+  storage.mode(X) <- "double"
+  y <- if (target == "log_rop") log(pmax(frame$rop, 1e-6)) else frame$rop
+
+  proxy <- .zsafe(abs(c(0, diff(frame$rop)))) +
+    .zsafe(abs(c(0, diff(frame$wob)))) +
+    .zsafe(abs(c(0, diff(frame$rpm))))
+  if ("top_drive_torque" %in% names(frame) &&
+      sum(is.finite(frame$top_drive_torque)) >= 30) {
+    proxy <- proxy + .zsafe(abs(c(0, diff(frame$top_drive_torque))))
+  }
+  trans <- locate_transition(proxy, k = k)
+
+  regime_cols <- intersect(c("diff_pressure", "flow", "top_drive_torque",
+                             "downhole_torque", "gamma", "stick"),
+                           names(frame))
+  regime <- if (length(regime_cols)) {
+    as.matrix(frame[, regime_cols, drop = FALSE])
+  } else {
+    cbind(rop_step = abs(c(0, diff(frame$rop))))
+  }
+
+  list(
+    X = X, y = y, frame = frame,
+    regime = regime, depth = frame$dept, transition = as.integer(trans),
+    n = nrow(frame), predictors = predictors, target = target,
+    segment = cadence, dataset = paste0("utah_forge_", gsub("[^A-Za-z0-9]+", "_", tolower(well))),
+    source_path = path
   )
 }
